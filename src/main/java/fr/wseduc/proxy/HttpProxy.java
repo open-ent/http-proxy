@@ -112,29 +112,43 @@ public class HttpProxy extends AbstractVerticle {
 		}
 		if (log.isDebugEnabled()) {
 			log.debug(uri);
-			// log.debug(proxy.getHost() + ":" + proxy.getPort());
 		}
+		String host = request.headers().get("Host");
+		String remoteHost = request.remoteAddress() != null ? request.remoteAddress().host() : "";
+		HeadersMultiMap forwardHeaders = new HeadersMultiMap().addAll(request.headers());
+		if (host != null)       forwardHeaders.add("X-Forwarded-Host", host);
+		if (remoteHost != null) forwardHeaders.add("X-Forwarded-For", remoteHost);
 		request.pause();
 		proxy.request(new RequestOptions()
 						.setMethod(request.method())
 						.setURI(uri)
-						.setHeaders(new HeadersMultiMap()
-								.addAll(request.headers())
-								.add("X-Forwarded-Host", request.headers().get("Host"))
-								.add("X-Forwarded-For", request.remoteAddress().host())))
+						.setHeaders(forwardHeaders))
 				.map(proxyRequest -> proxyRequest.setChunked(true))
 				.onSuccess(proxyRequest -> {
 					request.response().headers().remove("Content-Length");
 					request.handler(data -> proxyRequest.write(data));
-					request.endHandler(v -> proxyRequest.send().onSuccess(cRes -> {
-						request.response().setStatusCode(cRes.statusCode());
-						request.response().headers().addAll(cRes.headers());
-						request.response().headers().remove("Content-Length");
-						request.response().setChunked(true);
-						cRes.handler(data -> request.response().write(data));
-						cRes.endHandler(v1 -> request.response().end());
-					}));
+					request.endHandler(v -> proxyRequest.send()
+							.onSuccess(cRes -> {
+								request.response().setStatusCode(cRes.statusCode());
+								request.response().headers().addAll(cRes.headers());
+								request.response().headers().remove("Content-Length");
+								request.response().setChunked(true);
+								cRes.handler(data -> request.response().write(data));
+								cRes.endHandler(v1 -> request.response().end());
+							})
+							.onFailure(err -> {
+								log.error("Proxy send error for " + uri, err);
+								if (!request.response().ended()) {
+									request.response().setStatusCode(502).end();
+								}
+							}));
 					request.resume();
+				})
+				.onFailure(err -> {
+					log.error("Proxy connect error for " + uri, err);
+					if (!request.response().ended()) {
+						request.response().setStatusCode(502).end();
+					}
 				});
 	}
 
