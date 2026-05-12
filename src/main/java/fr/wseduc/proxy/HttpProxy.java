@@ -110,18 +110,20 @@ public class HttpProxy extends AbstractVerticle {
 		if (uri.endsWith("%2F") || uri.endsWith("%2f")) {
 			uri = uri.substring(0, uri.length() - 3);
 		}
+		final String finalUri = uri;
 		if (log.isDebugEnabled()) {
-			log.debug(uri);
+			log.debug(finalUri);
 		}
 		String host = request.headers().get("Host");
 		String remoteHost = request.remoteAddress() != null ? request.remoteAddress().host() : "";
-		HeadersMultiMap forwardHeaders = new HeadersMultiMap().addAll(request.headers());
+		HeadersMultiMap forwardHeaders = new HeadersMultiMap();
+		forwardHeaders.addAll(request.headers());
 		if (host != null)       forwardHeaders.add("X-Forwarded-Host", host);
 		if (remoteHost != null) forwardHeaders.add("X-Forwarded-For", remoteHost);
 		request.pause();
 		proxy.request(new RequestOptions()
 						.setMethod(request.method())
-						.setURI(uri)
+						.setURI(finalUri)
 						.setHeaders(forwardHeaders))
 				.map(proxyRequest -> proxyRequest.setChunked(true))
 				.onSuccess(proxyRequest -> {
@@ -137,7 +139,7 @@ public class HttpProxy extends AbstractVerticle {
 								cRes.endHandler(v1 -> request.response().end());
 							})
 							.onFailure(err -> {
-								log.error("Proxy send error for " + uri, err);
+								log.error("Proxy send error for " + finalUri, err);
 								if (!request.response().ended()) {
 									request.response().setStatusCode(502).end();
 								}
@@ -145,7 +147,7 @@ public class HttpProxy extends AbstractVerticle {
 					request.resume();
 				})
 				.onFailure(err -> {
-					log.error("Proxy connect error for " + uri, err);
+					log.error("Proxy connect error for " + finalUri, err);
 					if (!request.response().ended()) {
 						request.response().setStatusCode(502).end();
 					}
