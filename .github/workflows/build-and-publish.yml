@@ -2,10 +2,10 @@ name: Build & Publish Fat Mod
 
 on:
   push:
-    branches: [main, master, develop]
+    branches: ['*-patched', '*-patched-dev', main, master, develop, dev]
     tags: ['*']
   pull_request:
-    branches: [main, master, develop]
+    branches: [main, master, develop, dev]
   workflow_dispatch:
 
 permissions:
@@ -21,7 +21,7 @@ jobs:
 
       - uses: actions/setup-java@v4
         with:
-          java-version: '11'
+          java-version: '8'
           distribution: temurin
           cache: maven
 
